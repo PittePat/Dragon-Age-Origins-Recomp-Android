@@ -10,6 +10,10 @@ namespace dao::kernel
     {
         // The disc's default.xex (installer/deps.py GAME_XEX_SHA1).
         constexpr std::string_view kGameXexSha1 = "532C0EC164F44BC8784CC0E8F6F67F72C1ED3751";
+        // The Russian disc's ("Dragon Age: Начало", media 26111665): another signed copy of the
+        // same program, its XenonRecomp output byte for byte the one above's. The title updates
+        // are made for the other disc, so it runs its own build only.
+        constexpr std::string_view kRussianXexSha1 = "33EC8BAA612D8186A3ABEB0C01C22D79EE1E3E02";
         // Title Update 6's and 7's default.xexp (installer/deps.py TU6_XEXP_SHA1,
         // TU7_XEXP_SHA1).
         constexpr std::string_view kTu6XexpSha1 = "4141B608E44C4ED35EB4E24BA2C05844A2F57A54";
@@ -39,6 +43,7 @@ namespace dao::kernel
 
     bool IsGameXex(std::span<const uint8_t> xex)
     {
-        return Sha1(xex) == kGameXexSha1;
+        const std::string sha1 = Sha1(xex);
+        return sha1 == kGameXexSha1 || sha1 == kRussianXexSha1;
     }
 }

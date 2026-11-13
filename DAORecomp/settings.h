@@ -12,8 +12,9 @@ namespace dao
     // Dev, dev releases too (vX.Y.Z-dev.N, test builds published between releases).
     enum class UpdateChannel { Release, Dev };
     // The game's language: the ones the supported disc has text for (its voices are
-    // English in each). The game reads it as the console's language.
-    enum class Language { English, Italian, Spanish };
+    // English in each), and Russian, the Russian disc's only one (text and voices). The
+    // game reads it as the console's language.
+    enum class Language { English, Italian, Spanish, Russian };
     // Dev on a dev release, Release on anything else (defined in
     // launcher/release_list.cpp, with the version tags).
     UpdateChannel DefaultUpdateChannel();
@@ -164,7 +165,7 @@ namespace dao
     // launcher list one name per level.
     constexpr int kMaxLowLatency = 2;
     // The last language (Settings::language); the launcher lists one name per language.
-    constexpr int kMaxLanguage = int(Language::Spanish);
+    constexpr int kMaxLanguage = int(Language::Russian);
     // The last temporal upscaler (Settings::temporalUpscaler); the in-game Graphics tab and the
     // launcher list one name per upscaler.
     constexpr int kMaxTemporalUpscaler = int(TemporalUpscaler::Dlss);
