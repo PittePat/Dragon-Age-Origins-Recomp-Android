@@ -14,7 +14,23 @@ namespace dao::kernel
         const bool installed = fs::is_regular_file(xexp, ec);
         const char* forced = getenv("DAO_BUILD");
         const bool disc = forced && _stricmp(forced, "disc") == 0;
-#if DAO_HAS_TU6
+#if DAO_TU_ONLY
+        // Only the title update's code is here: without its default.xexp the image can't be
+        // loaded (LoadXex says so), and the disc's can't run.
+        const int update = installed ? TitleUpdateNumber(xexp) : 0;
+        g_build = { update == 7 ? GameVersion::Tu7 : GameVersion::Tu6, DaoBuildTu6 };
+        if (!update)
+        {
+            LOGE("Game build: this game was built with Title Update 6 or 7, but {} is {}", Utf8(xexp),
+                installed ? "another file" : "missing");
+        }
+        else
+        {
+            LOGI("Game build: Title Update {} ({})", update, Utf8(UpdateRoot(gameRoot)));
+        }
+        (void)disc;
+        return;
+#elif DAO_HAS_TU6
         const int update = installed && !disc ? TitleUpdateNumber(xexp) : 0;
         if (installed && !disc && !update)
         {

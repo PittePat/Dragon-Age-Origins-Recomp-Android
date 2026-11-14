@@ -23,10 +23,18 @@ namespace dao::kernel
         Tu7,
     };
 
+    // DAO_TU_ONLY (XDroid360's phone build): the executable holds only the title update's
+    // code, with the disc's names (sub_..., no tu6_ prefix), and runs nothing else. The
+    // phone translates the disc's or the title update's code, not both.
     struct GameBuild
     {
+#if DAO_TU_ONLY
+        GameVersion version = GameVersion::Tu6;
+        DaoBuildInfo info = DaoBuildTu6;
+#else
         GameVersion version = GameVersion::Disc;
         DaoBuildInfo info = DaoBuildDisc;
+#endif
     };
 
     // Set once by SelectBuild, before the guest starts.
@@ -65,13 +73,18 @@ namespace dao::kernel
 // original is the recompiled function (__imp__<name>). The TU6 name carries the
 // prefix of its generated code, e.g.
 //   GAME_HOOK(sub_825AF710, tu6_sub_825E47B0, SendMessageHook)
-#define GAME_HOOK_ONE(name, hook)        \
+// (GAME_HOOK_ONE expands its name first: under DAO_TU_ONLY, tu6_sub_X is a macro for
+// sub_X, from the tu6_names.h the build generates.)
+#define GAME_HOOK_ONE_IMPL(name, hook)   \
     extern "C" PPC_FUNC(__imp__##name);  \
     PPC_FUNC(name)                       \
     {                                    \
         hook(ctx, base, __imp__##name);  \
     }
-#if DAO_HAS_TU6
+#define GAME_HOOK_ONE(name, hook) GAME_HOOK_ONE_IMPL(name, hook)
+#if DAO_TU_ONLY
+#define GAME_HOOK(disc, tu6, hook) GAME_HOOK_ONE(tu6, hook)
+#elif DAO_HAS_TU6
 #define GAME_HOOK(disc, tu6, hook) GAME_HOOK_ONE(disc, hook) GAME_HOOK_ONE(tu6, hook)
 #else
 #define GAME_HOOK(disc, tu6, hook) GAME_HOOK_ONE(disc, hook)

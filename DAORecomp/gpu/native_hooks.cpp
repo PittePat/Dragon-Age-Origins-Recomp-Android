@@ -5,8 +5,9 @@
 //     already patched by D3D, so it can't be looked up by content);
 //   - which shaders each Draw* had bound, with its primitive type and count, so the ring can pair
 //     the draw with its shaders.
-// Disc build addresses (the XDK's D3D, statically linked); Title Update 6 has the same library at
-// other addresses, not hooked yet.
+// The XDK's D3D is statically linked; Title Update 6 (and 7) has the same library 0xC9EE0 higher
+// (each function's code the disc's but for the global addresses it loads), so each hook has a
+// disc address and a title update one. The disc's below.
 //   CreateVertexShader sub_82CCC3B8, CreatePixelShader sub_82CCC1D0: r3 the container on entry,
 //     the new object in r3 on return (0 on failure).
 //   DrawVertices sub_82CD3850 (dev, prim, start, count), DrawIndexedVertices sub_82CD3C40 (dev, prim,
@@ -81,11 +82,11 @@ namespace
     }
 }
 
-GAME_HOOK_ONE(sub_82CCC3B8, CreateVertexShaderHook)
-GAME_HOOK_ONE(sub_82CCC1D0, CreatePixelShaderHook)
-GAME_HOOK_ONE(sub_82CD3850, DrawVerticesHook)
-GAME_HOOK_ONE(sub_82CD3C40, DrawIndexedVerticesHook)
-GAME_HOOK_ONE(sub_82CD3250, DrawVerticesUPHook)
-GAME_HOOK_ONE(sub_82CD37B0, DrawIndexedVerticesUPHook)
+GAME_HOOK(sub_82CCC3B8, tu6_sub_82D96298, CreateVertexShaderHook)
+GAME_HOOK(sub_82CCC1D0, tu6_sub_82D960B0, CreatePixelShaderHook)
+GAME_HOOK(sub_82CD3850, tu6_sub_82D9D730, DrawVerticesHook)
+GAME_HOOK(sub_82CD3C40, tu6_sub_82D9DB20, DrawIndexedVerticesHook)
+GAME_HOOK(sub_82CD3250, tu6_sub_82D9D130, DrawVerticesUPHook)
+GAME_HOOK(sub_82CD37B0, tu6_sub_82D9D690, DrawIndexedVerticesUPHook)
 
 #endif // XDROID360_NATIVE_RENDERER
