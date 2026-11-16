@@ -346,9 +346,31 @@ NEW_CASES = r'''
         println("\t{} = {};", v(insn.operands[0]), vTemp());
         break;
 
+    // Mass Effect (from the ME1 session's patch_xenonrecomp_me1.py; its default.xex has 202 sites:
+    // vandc 157, vnor 27, vpkuhus128 6, vpkuwus128 6, vctuxs 6). Dragon Age's code has none of them.
+    case PPC_INST_VANDC: // as VANDC128: vD = vA & ~vB
+        println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_andnot_si128(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8)));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
+        break;
+
+    case PPC_INST_VNOR: // as VNOR128
+        println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_xor_si128(simde_mm_or_si128(simde_mm_load_si128((simde__m128i*){}.u8), simde_mm_load_si128((simde__m128i*){}.u8)), simde_mm_set1_epi32(-1)));", v(insn.operands[0]), v(insn.operands[1]), v(insn.operands[2]));
+        break;
+
+    case PPC_INST_VPKUHUS128: // u16 -> u8 with unsigned saturation; vectors are stored reversed, so vA's half goes second
+        println("\tsimde_mm_store_si128((simde__m128i*){}.u8, simde_mm_packus_epi16(simde_mm_min_epu16(simde_mm_load_si128((simde__m128i*){}.u16), simde_mm_set1_epi16(255)), simde_mm_min_epu16(simde_mm_load_si128((simde__m128i*){}.u16), simde_mm_set1_epi16(255))));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
+        break;
+
+    case PPC_INST_VPKUWUS128: // u32 -> u16 with unsigned saturation
+        println("\tsimde_mm_store_si128((simde__m128i*){}.u16, simde_mm_packus_epi32(simde_mm_min_epu32(simde_mm_load_si128((simde__m128i*){}.u32), simde_mm_set1_epi32(65535)), simde_mm_min_epu32(simde_mm_load_si128((simde__m128i*){}.u32), simde_mm_set1_epi32(65535))));", v(insn.operands[0]), v(insn.operands[2]), v(insn.operands[1]));
+        break;
+
+    case PPC_INST_VCTUXS: // float -> u32 with unsigned saturation, scaled by 2^uimm; NaN -> 0
+        println("\t{{ PPCVRegister t; for (int i = 0; i < 4; i++) {{ float x = {}.f32[i] * {}.0f; t.u32[i] = (x != x || x <= 0.0f) ? 0u : (x >= 4294967296.0f ? 0xFFFFFFFFu : uint32_t(x)); }} {} = t; }}", v(insn.operands[1]), 1u << insn.operands[2], v(insn.operands[0]));
+        break;
+
 '''
 
-OLD_VCMPBFP = '''    case PPC_INST_VCMPBFP:
+OLD_VCMPBFP ='''    case PPC_INST_VCMPBFP:
     case PPC_INST_VCMPBFP128:
         println("\\t__builtin_debugtrap();");
         break;
