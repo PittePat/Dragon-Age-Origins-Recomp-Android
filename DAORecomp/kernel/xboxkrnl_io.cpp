@@ -220,10 +220,13 @@ namespace dao::imp
         return X_STATUS_SUCCESS;
     }
 
+    // NtOpenFile(handle, access, attributes, iosb, share access, open options): six arguments. With five, the
+    // share access was read as the options; XAPI's MoveFile passes share 7, which set FILE_DIRECTORY_FILE, so
+    // opening an existing file failed with STATUS_NOT_A_DIRECTORY (found by the Mass Effect port).
     uint32_t NtOpenFile(u32* handleOut, uint32_t access, X_OBJECT_ATTRIBUTES* attributes, X_IO_STATUS_BLOCK* iosb,
-        uint32_t options)
+        uint32_t shareAccess, uint32_t options)
     {
-        return NtCreateFile(handleOut, access, attributes, iosb, nullptr, 0, 0, Disposition::Open, options);
+        return NtCreateFile(handleOut, access, attributes, iosb, nullptr, 0, shareAccess, Disposition::Open, options);
     }
 
     // Completes an I/O request: status block, event, APC.
