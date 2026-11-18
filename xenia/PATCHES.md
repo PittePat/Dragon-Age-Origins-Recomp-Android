@@ -24,7 +24,7 @@ These are this project's (MIT, the repository's `LICENSE`), not Xenia's.
   CPU modules (interrupts, guest threads, the window).
 - `dao_live_settings.h`: the settings the in-game Graphics menu changes while the
   game runs (vsync, low latency, temporal sharpness, anisotropic filtering, motion
-  blur, depth of field, frame generation, HDR paper white and peak; and, for depth of
+  blur, SMAA, depth of field, frame generation, HDR paper white and peak; and, for depth of
   field, whether its camera is in a conversation's or cutscene's shots, and its field of
   view), as atomics the GPU, presenter and render threads read instead of their cvars
   (also in the upstream files `d3d12_texture_cache.cc` and `d3d12_presenter.cc`).
@@ -37,7 +37,8 @@ These are this project's (MIT, the repository's `LICENSE`), not Xenia's.
   back to FSR), `dao_upscale_motion.cc` the motion vectors,
   `dao_upscale_hdr.cc` true HDR, `dao_motion_blur.cc` motion blur,
   `dao_upscale_dof.cc` depth of field,
-  `dao_upscale_fg.cc` frame generation (FSR 3.1).
+  `dao_upscale_fg.cc` frame generation (FSR 3.1), and `dao_smaa.cc` SMAA without
+  temporal upscaling (its shader and lookup textures in `thirdparty/smaa`).
 - `ui/dao_frame_pacer.cc`: frame generation's presentation: the presenter's
   thread that paints each generated frame and, half a frame later, the real one.
 - `ui/d3d12/dao_low_latency.*`: low latency (AMD Radeon Anti-Lag 2, the header in
@@ -60,9 +61,22 @@ These are this project's (MIT, the repository's `LICENSE`), not Xenia's.
   upscaler's image at the swap, waits and GPU-written memory reads (command
   processor, which also applies the gamma ramp to the generated frame);
   resolves straight from render targets into textures (render
-  target and texture caches); the frame latency wait, HDR output and scRGB
-  captures (presenter); device removed logging and `DAO_DRED` (provider).
-- `gpu/shaders/dao_*`, `ui/shaders/dao_*`: the upscaler's, resolves' and HDR
+  target and texture caches); the game's bloom drawn at the console's
+  resolution with resolution scaling (render target cache, `dao_native_bloom`:
+  its blur's taps are a console pixel apart and would leave gaps, showing as
+  copies of bright edges), and its depth of field's half-resolution passes the
+  same way (`dao_native_depth_of_field`: streaks in the blurred background),
+  both only at their half-resolution pitch (their blur material serves the
+  Fade at full resolution too); the frame latency wait, HDR output and scRGB
+  captures (presenter); device removed logging and `DAO_DRED` (provider). The
+  depth of field's blend also reads its blur bilinear rather than point
+  sampled (the sampler set in `d3d12_command_processor.cc`'s `UpdateBindings`,
+  and the texel center snap of point sampling turned off in
+  `UpdateSystemConstantValues_Impl`).
+  With `dao_console_depth_of_field` off, the game's depth of field's passes
+  are skipped (`IssueDraw` returns before drawing them) and its blend draws
+  the scene alone (its MaxBlur constant zeroed in `UpdateBindings`).
+- `gpu/shaders/dao_*`, `ui/shaders/dao_*`: the upscaler's, SMAA's, resolves' and HDR
   output's shaders (compiled by `scripts/build_xenia_shaders.py`).
 
 ## Changed upstream files
@@ -82,8 +96,15 @@ These are this project's (MIT, the repository's `LICENSE`), not Xenia's.
   and the memexport successor walk takes a target past the control flow as the end
   instead of indexing with it. Shaders loaded from the storage file are not trusted,
   and a crafted one read past its ucode buffer.
+- `gpu/dxbc_shader_translator_fetch.cc`: in a draw made native (the bloom's and the
+  depth of field's half-resolution passes), the texel center snap of a point-sampled
+  fetch first moves the coordinate right and down by the epsilon, in host texels. Its
+  pixel centers are on the edges between a resolution-scaled texture's host texels, and
+  float error put them on either side, drawing a fixed seam in the depth of field
+  (issue #13); the guest's truncation takes the texel to the right or below.
 - GPU: `gpu/command_processor.*`, `gpu/pm4_command_processor_implement.h`,
   `gpu/graphics_system.*`, `gpu/gpu_flags.cc`, `gpu/draw_util.*`, `gpu/primitive_processor.cc`,
+  `gpu/render_target_cache.*` (a draw the DAO hook makes native, whatever its pitch),
   `gpu/shader_storage.h`, `gpu/shared_memory.*`, `gpu/texture_cache.*`.
 - D3D12: `gpu/d3d12/d3d12_command_processor.*` (also low latency's markers at the
   swap), `d3d12_graphics_system.*`,

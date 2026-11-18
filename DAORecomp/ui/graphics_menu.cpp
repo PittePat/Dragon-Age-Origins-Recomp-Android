@@ -34,6 +34,7 @@ namespace dao::ui
             VSync,
             LowLatency,
             TemporalUpscaler,
+            AntiAliasing,
             TemporalSharpness,
             FrameGeneration,
             Upscaler,
@@ -43,6 +44,7 @@ namespace dao::ui
             PostProcessing,
             MotionBlur,
             DepthOfField,
+            ConsoleDepthOfField,
             Fov,
             ConversationFov,
             Hdr,
@@ -65,6 +67,7 @@ namespace dao::ui
             { "VSync", false },
             { "LowLatency", false }, // on an NVIDIA GPU, maybe: Pending asks
             { "TemporalUpscaler", true },
+            { "AntiAliasing", false },
             { "TemporalSharpness", false },
             { "FrameGeneration", false },
             { "Upscaler", false },
@@ -74,6 +77,7 @@ namespace dao::ui
             { "PostProcessing", false },
             { "MotionBlur", false },
             { "DepthOfField", false },
+            { "ConsoleDepthOfField", false },
             { "Fov", false },
             { "ConversationFov", false },
             { "Hdr", true },
@@ -176,6 +180,7 @@ namespace dao::ui
             case Key::VSync: return s.vsync;
             case Key::LowLatency: return s.lowLatency;
             case Key::TemporalUpscaler: return int(s.temporalUpscaler);
+            case Key::AntiAliasing: return int(s.antiAliasing);
             case Key::TemporalSharpness: return std::round(s.temporalSharpness * kSliderSteps);
             case Key::FrameGeneration: return s.frameGeneration;
             case Key::Upscaler: return int(s.upscaler);
@@ -185,6 +190,7 @@ namespace dao::ui
             case Key::PostProcessing: return s.postProcessing;
             case Key::MotionBlur: return s.motionBlur;
             case Key::DepthOfField: return s.depthOfField;
+            case Key::ConsoleDepthOfField: return s.consoleDepthOfField;
             case Key::Fov: return s.fov;
             case Key::ConversationFov: return s.conversationFov;
             case Key::Hdr: return s.hdr;
@@ -210,6 +216,9 @@ namespace dao::ui
             case Key::TemporalUpscaler:
                 s.temporalUpscaler = TemporalUpscaler(std::clamp(whole, 0, kMaxTemporalUpscaler));
                 break;
+            case Key::AntiAliasing:
+                s.antiAliasing = AntiAliasing(std::clamp(whole, 0, kMaxAntiAliasing));
+                break;
             case Key::TemporalSharpness:
                 s.temporalSharpness = float(value / kSliderSteps);
                 break;
@@ -228,6 +237,7 @@ namespace dao::ui
             case Key::PostProcessing: s.postProcessing = whole != 0; break;
             case Key::MotionBlur: s.motionBlur = whole; break;
             case Key::DepthOfField: s.depthOfField = whole != 0; break;
+            case Key::ConsoleDepthOfField: s.consoleDepthOfField = whole != 0; break;
             case Key::Fov: s.fov = whole; break;
             case Key::ConversationFov: s.conversationFov = whole; break;
             case Key::Hdr: s.hdr = whole != 0; break;
@@ -259,6 +269,7 @@ namespace dao::ui
             case Key::VSync: to.vsync = from.vsync; break;
             case Key::LowLatency: to.lowLatency = from.lowLatency; break;
             case Key::TemporalUpscaler: to.temporalUpscaler = from.temporalUpscaler; break;
+            case Key::AntiAliasing: to.antiAliasing = from.antiAliasing; break;
             case Key::TemporalSharpness: to.temporalSharpness = from.temporalSharpness; break;
             case Key::FrameGeneration: to.frameGeneration = from.frameGeneration; break;
             case Key::Upscaler:
@@ -271,6 +282,7 @@ namespace dao::ui
             case Key::PostProcessing: to.postProcessing = from.postProcessing; break;
             case Key::MotionBlur: to.motionBlur = from.motionBlur; break;
             case Key::DepthOfField: to.depthOfField = from.depthOfField; break;
+            case Key::ConsoleDepthOfField: to.consoleDepthOfField = from.consoleDepthOfField; break;
             case Key::Fov: to.fov = from.fov; break;
             case Key::ConversationFov: to.conversationFov = from.conversationFov; break;
             case Key::Hdr: to.hdr = from.hdr; break;
@@ -292,6 +304,7 @@ namespace dao::ui
             case Key::FrameRate: gpu::SetFrameRate(s.frameRate); break;
             case Key::VSync: live.present_vsync = s.vsync; break;
             case Key::LowLatency: live.low_latency = s.lowLatency; break;
+            case Key::AntiAliasing: live.smaa = s.antiAliasing == AntiAliasing::Smaa; break;
             case Key::TemporalSharpness: live.temporal_sharpness = s.temporalSharpness; break;
             case Key::FrameGeneration: live.frame_generation = s.frameGeneration; break;
             case Key::Upscaler:
@@ -303,6 +316,7 @@ namespace dao::ui
             case Key::PostProcessing: s_postProcessing = s.postProcessing; break;
             case Key::MotionBlur: live.motion_blur = s.motionBlur; break;
             case Key::DepthOfField: live.depth_of_field = s.depthOfField; break;
+            case Key::ConsoleDepthOfField: live.console_depth_of_field = s.consoleDepthOfField; break;
             case Key::Fov:
             case Key::ConversationFov: gpu::SetCameraFov(s.fov, s.conversationFov); break;
             case Key::HdrPaperWhite: live.hdr_paper_white = s.hdrPaperWhite; break;

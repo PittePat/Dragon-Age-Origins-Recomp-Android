@@ -558,6 +558,8 @@ def install(reporter, built, dest, with_shortcuts=False):
     shutil.copy2(sl_bin / "nvngx_dlss.license.txt", dest / "nvidia_dlss_license.txt")
     # The Anti-Lag 2 SDK's header is built into the exe: its license (MIT) goes with it.
     shutil.copy2(REPO / "thirdparty" / "antilag2" / "LICENSE.txt", dest / "amd_antilag2_license.txt")
+    # So are SMAA's shader and lookup textures: its license (MIT) too.
+    shutil.copy2(REPO / "thirdparty" / "smaa" / "LICENSE.txt", dest / "smaa_license.txt")
     _remove_neural_rendering(reporter, dest)
     for folder in ("userdata", "mods"):
         (dest / folder).mkdir(exist_ok=True)
@@ -601,17 +603,15 @@ def append_engine(launcher, engine_dir, out):
     Path(out).write_bytes(image + data + footer)
 
 
-def build_setup(reporter, engine, out, jobs=0):
+def build_setup(reporter, engine, out, jobs=0, llvm="download"):
     """Builds what players download: DAORecomp.exe with the launcher and its Install view
     but no game code (DAO_LAUNCHER_ONLY), with the installer's folder `engine` in it.
-    Accepts the Microsoft build tools license for the download (as the CI does)."""
+    Accepts the Microsoft build tools license for the download (as the CI does).
+    `llvm` as install.py's --llvm: releases use the pinned download."""
     check_host()
-    if not IS_WINDOWS:
-        raise InstallError("The launcher-only exe is built on Windows.")
     toolchain.ensure_git(reporter)
     sources.ensure_all(reporter)
-    # (The pinned LLVM, never one the build machine happens to have.)
-    tc = toolchain.ensure_toolchain(reporter, True, "download")
+    tc = toolchain.ensure_toolchain(reporter, True, llvm)
     build = BUILD / "setup"
     # For any AVX processor: this is the exe players download.
     _configure(reporter, tc, REPO, build, {"DAO_LAUNCHER_ONLY": "ON", "DAO_VERSION": VERSION,

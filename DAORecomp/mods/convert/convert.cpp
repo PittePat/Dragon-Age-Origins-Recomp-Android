@@ -397,7 +397,7 @@ namespace dao::mods
         }
 
         std::variant<std::vector<uint8_t>, std::string> ConvertGff(std::span<const uint8_t> data,
-            const Catalog& catalog, const std::string& label)
+            const Catalog& catalog, const std::string& label, const gff::File* gameModel, bool distant)
         {
             try
             {
@@ -409,6 +409,9 @@ namespace dao::mods
                         label, bent);
                 if (file->type == gff::Fourcc{ 'M', 'E', 'S', 'H' })
                     if (auto error = ConvertMesh(*file))
+                        return *error;
+                if (gameModel)
+                    if (auto error = ConvertSkeleton(*file, *gameModel, distant))
                         return *error;
                 std::vector<gff::Template> templates;
                 for (const gff::Template& tpl : file->templates)
@@ -475,8 +478,11 @@ namespace dao::mods
                 }
                 MarkNormalMaps();
                 AddDistantCopies();
-                if (Stopped() || !ConvertAll())
+                if (Stopped() || !CheckSkeletons() || !ConvertAll())
+                {
+                    result_.notes.clear();   // They describe a conversion that didn't happen.
                     return;
+                }
                 PutInPlace();
                 if (result_.converted && manifest_)
                     DescribeFromManifest(mod_, *manifest_);
@@ -721,6 +727,153 @@ namespace dao::mods
                 return Counted(mods::ReadHead(job.source, size_t(std::min<uintmax_t>(templatesEnd, kMaxFileBytes))));
             }
 
+            // The game's model whose bone numbers a job's .mmh takes: the one it replaces, or
+            // the one BorrowRig chose. Nothing if there's none (or error, if it can't be read).
+            std::optional<gff::File> GameModel(const Job& job, std::optional<std::string>& error)
+            {
+                const auto borrowed = borrowedRigs_.find(job.target);
+                const std::string name = borrowed != borrowedRigs_.end() ? borrowed->second : Lower(Utf8(job.target.filename()));
+                if (!game_.Has(name))
+                    return std::nullopt;
+                const auto original = game_.ReadFile(name, kMaxGameFileBytes);
+                auto model = original ? gff::Read(*original) : std::nullopt;
+                if (!model || !model->IsX360())
+                {
+                    error = "the game's copy of this model can't be read; check the game's files";
+                    return std::nullopt;
+                }
+                return model;
+            }
+
+            // Whether a job's .mmh is for a distant model: a copy made here, or the mod's own.
+            bool IsDistant(const Job& job) const
+            {
+                if (const auto borrowed = borrowedRigs_.find(job.target); borrowed != borrowedRigs_.end())
+                    return !borrowed->second.ends_with("_0.mmh");
+                const std::string stem = Lower(Utf8(job.target.stem()));
+                return job.distant || stem.ends_with("_2") || stem.ends_with("_3");
+            }
+
+            // A new model has no game model of its own. Nearly all of a playable race's models
+            // are numbered like its nude body at each detail level, so a model with every bone
+            // of that rig takes its numbers. Whether it could (others keep the PC's). A name's
+            // _2 or _3 is a detail level only beside its _0: alone, it may be a style.
+            bool BorrowRig(const Job& job, const gff::File& model)
+            {
+                const std::string stem = Lower(Utf8(job.target.stem()));
+                constexpr std::string_view kRaces[] = { "hf_", "hm_", "ef_", "em_", "df_", "dm_", "qm_" };
+                if (!std::ranges::any_of(kRaces, [&](std::string_view race) { return stem.starts_with(race); }))
+                    return false;
+                const bool lod = stem.ends_with("_2") || stem.ends_with("_3");
+                const fs::path detail = job.target.parent_path() /
+                    FromUtf8(stem.substr(0, stem.size() - (lod ? 1 : 0)) + (lod ? "0.mmh" : ""));
+                const bool distant = lod && std::ranges::any_of(jobs_, [&](const Job& other) {
+                    return Lower(Utf8(other.target)) == Lower(Utf8(detail));
+                });
+                const char level = distant ? stem.back() : '0';
+                const std::string name = fmt::format("{}_arm_nuda_{}.mmh", stem.substr(0, 2), level);
+                const auto original = game_.ReadFile(name, kMaxGameFileBytes);
+                const auto reference = original ? gff::Read(*original) : std::nullopt;
+                if (!reference || !reference->IsX360() || !HasBonesOf(model, *reference))
+                    return false;
+                gff::File attempt = model;
+                if (ConvertSkeleton(attempt, *reference, distant))
+                    return false;
+                borrowedRigs_.emplace(job.target, name);
+                return true;
+            }
+
+            // A job's name in messages (a copy shares its original's label).
+            static std::string Named(const Job& job)
+            {
+                return job.distant ? fmt::format("{} (as {})", job.label, Utf8(job.target.filename())) : job.label;
+            }
+
+            // A .msh's vertices index the bone palette of its PC .mmh, not the console
+            // model's, so a skinned mesh replacing a game file can't go without that model.
+            // Checked before anything is converted, along with every model's skeleton;
+            // also notes which files must not simply be left out if they fail (skinned_).
+            bool CheckSkeletons()
+            {
+                const auto readBefore = readBytes_;
+                std::map<std::string, bool> modelMeshes;   // mesh file names, whether their model has bones
+                size_t unmatched = 0, borrowed = 0;
+                for (const Job& job : jobs_)
+                {
+                    if (Stopped())
+                        return false;
+                    if (Lower(Utf8(job.target.extension())) != ".mmh")
+                        continue;
+                    const auto data = Load(job);
+                    auto model = data && IsPcGff(*data) ? gff::Read(*data) : std::nullopt;
+                    if (!model)
+                        continue;
+                    const bool rigged = HasSkeleton(*model);
+                    if (!job.distant)
+                    {
+                        constexpr size_t kMaxNameLength = 260;
+                        const std::u16string meshName = ModelMeshName(*model);
+                        if (meshName.size() <= kMaxNameLength)
+                            modelMeshes[Lower(WideToUtf8(std::wstring(meshName.begin(), meshName.end())))] |= rigged;
+                        modelMeshes[Lower(Utf8(job.target.stem())) + ".msh"] |= rigged;
+                    }
+                    std::optional<std::string> error;
+                    auto reference = GameModel(job, error);
+                    if (!reference && !error && rigged && BorrowRig(job, *model))
+                    {
+                        ++borrowed;
+                        reference = GameModel(job, error);
+                    }
+                    if (reference)
+                        error = ConvertSkeleton(*model, *reference, IsDistant(job));
+                    if (error)
+                    {
+                        result_.problems.push_back(fmt::format("{}: {}. No files were changed.", Named(job), *error));
+                        return false;
+                    }
+                    if (rigged)
+                        skinned_.insert(job.label);
+                    if (rigged && !reference)
+                        ++unmatched;
+                }
+                for (const Job& job : jobs_)
+                {
+                    if (Stopped())
+                        return false;
+                    if (Lower(Utf8(job.target.extension())) != ".msh")
+                        continue;
+                    const std::string name = Lower(Utf8(job.target.filename()));
+                    if (const auto model = modelMeshes.find(name); model != modelMeshes.end())
+                    {
+                        if (model->second)
+                            skinned_.insert(job.label);
+                        continue;
+                    }
+                    const auto data = Load(job);
+                    const auto mesh = data && IsPcGff(*data) ? gff::Read(*data) : std::nullopt;
+                    if (!mesh || !IsSkinned(*mesh))
+                        continue;
+                    if (!game_.Has(name))
+                    {
+                        ++unmatched;
+                        continue;
+                    }
+                    result_.problems.push_back(fmt::format("{}: this skinned mesh needs its PC model (.mmh), which is "
+                        "missing from the mod or can't be read. Add it and convert again. No files were changed.", job.label));
+                    return false;
+                }
+                // These files are read and counted again when they're converted.
+                readBytes_ = readBefore;
+                if (borrowed)
+                    result_.notes.push_back(fmt::format("{} new model{} the bone numbers of the game's nude body of "
+                        "the same race.", borrowed, borrowed == 1 ? " takes" : "s take"));
+                if (unmatched)
+                    result_.notes.push_back(fmt::format("{} skinned file{} no game model to take bone numbers from, "
+                        "so {} the PC version's and may look wrong in the game (twisted limbs).",
+                        unmatched, unmatched == 1 ? " has" : "s have", unmatched == 1 ? "it keeps" : "they keep"));
+                return true;
+            }
+
             // Menu atlases replacing the game's: the 360 version's menus name their pictures
             // differently, and use some the PC's don't have, so a PC layout fails them.
             // Where the mod's pages have every picture of the game's layout in its place,
@@ -895,11 +1048,26 @@ namespace dao::mods
                     else if (job.kind == Kind::Texture)
                         converted = ConvertTexture(*data, job.texture);
                     else if (IsPcGff(*data))
-                        converted = ConvertGff(*data, catalog, job.label);
+                    {
+                        std::optional<std::string> gameError;
+                        std::optional<gff::File> gameModel;
+                        if (Lower(Utf8(job.target.extension())) == ".mmh")
+                            gameModel = GameModel(job, gameError);
+                        if (gameError)
+                            converted = *gameError;
+                        else
+                            converted = ConvertGff(*data, catalog, job.label, gameModel ? &*gameModel : nullptr, IsDistant(job));
+                    }
                     else
                         converted = *data;
                     if (auto* error = std::get_if<std::string>(&converted))
                     {
+                        if (skinned_.contains(job.label))
+                        {
+                            result_.problems.push_back(fmt::format("{}: {}. A skinned model and its mesh must be "
+                                "converted together. No files were changed.", Named(job), *error));
+                            return false;
+                        }
                         failed.insert(job.label);
                         result_.leftOut.push_back(fmt::format("{}: {}", job.label, *error));
                         continue;
@@ -1048,6 +1216,8 @@ namespace dao::mods
             int unpacked_ = 0;
             uint64_t readBytes_ = 0;
             bool tooMuch_ = false;   // more than kMaxReadBytes
+            std::set<std::string> skinned_;   // labels of the files with bones, which can't be left out
+            std::map<fs::path, std::string> borrowedRigs_;   // new models' targets, the game models they follow
             std::vector<PcArchive> archives_;
             std::vector<Job> jobs_;
             std::unordered_map<std::string, size_t> targets_;   // lower-case target -> job

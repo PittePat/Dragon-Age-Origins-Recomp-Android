@@ -46,9 +46,12 @@ Buttons, joined with `+` (`A+LB`): `A B X Y START BACK LB RB LT RT LS RS GUIDE`,
 `RUP RDOWN RLEFT RRIGHT`. The input is merged with any real controller.
 
 `inputs/` holds DAO's: `load_latest.txt`, `camera.txt`, `walk.txt` (walks back and
-forth while turning the camera), `options_menu.txt`, `save_game.txt` (its load steps
+forth while turning the camera), `new_game.txt` (a new game's opening, into its first
+conversation), `options_menu.txt`, `save_game.txt` (its load steps
 follow the developer's saves; adjust them), `sandbox_overwrite_save.txt` (overwrites
-a save: only in a sandbox) and `photo_mode.txt` (goes through photo mode's controls; with
+a save: only in a sandbox), `body_mesh.txt` (108 s with `CAPTURE=5`, in a sandbox whose
+latest save is unarmored in an open area: close view, camera distance and walking), and
+`photo_mode.txt` (goes through photo mode's controls; with
 `EXTRA="DAO_PHOTO_DIR=<folder>"` for the photo, and `capture_window.ps1` for the overlay,
 which the game's captures leave out). To make a
 new one, run with captures every 2 s, read the times off the contact sheet, and keep
@@ -96,12 +99,37 @@ walk each time); it also lists the frames and blocks most like a one-frame flash
 
 ## Depth of field
 
-`xenia.dao_show_depth_of_field=true` shows depth of field's blur instead of the scene
-(red behind the focus, blue in front of it), and `xenia.dao_depth_of_field_always=true`
-turns it on in every 3D scene, not only conversations, for testing it anywhere (both with
-`video.depth_of_field` on). `xenia.dao_depth_of_field_scale` (0.25 to 4, default 1)
-scales the blur's size, for tuning. In game, F8 turns it off and on (not saved), to
-compare. Its GPU time is the "depth of field" mark of `DAO_GPU_TIMING=1`.
+The recomp's own depth of field (with temporal upscaling; for the game's, see "Bloom and
+the game's depth of field" below): `xenia.dao_show_depth_of_field=true` shows its blur
+instead of the scene (red behind the focus, blue in front of it), and
+`xenia.dao_depth_of_field_always=true` turns it on in every 3D scene, not only
+conversations, for testing it anywhere (both with `video.depth_of_field` on).
+`xenia.dao_depth_of_field_scale` (0.25 to 4, default 1) scales the blur's size, for
+tuning. In game, F8 turns it off and on (not saved), to compare. Its GPU time is the
+"depth of field" mark of `DAO_GPU_TIMING=1`.
+
+## Bloom and the game's depth of field
+
+With `resolution_scale` 2 and up, the game's bloom is drawn at the console's resolution
+(its passes' pixel shaders are in `xenia/src/xenia/gpu/d3d12/dao_render_target_cache.cc`).
+`xenia.dao_native_bloom=false` draws it at the resolution scale instead, for comparing:
+there its blur leaves gaps, and bright edges get offset copies (issue #11).
+
+The game's own depth of field (in conversations; not the recomp's, above) blurs at half
+the console's resolution too, and those passes are drawn at the console's resolution the
+same way, then blended over the scene with bilinear filtering (the console's point
+sampling shows sharp blocks at a higher resolution). The blend's state sets only the
+blur's min and mag filters, so its mip filter is whatever an earlier draw left: where
+that's point or base map, Xenia's snap to texel centers for point sampling would bring
+the blocks back (it can change from scene to scene), so it's off for the blur. Compare
+with `video.temporal_upscaler="off"`: temporal upscaling's jitter hides the blocks.
+`xenia.dao_native_depth_of_field=false` turns both off: the passes are drawn at the
+scale, where the blurred background gets thin streaks (issue #13), and the blend
+point-samples again. `video.console_depth_of_field=false` (the setting, or its cvar
+`xenia.dao_console_depth_of_field=false`) turns the game's depth of field off: its passes
+are skipped, and its blend draws the scene alone. `inputs/new_game.txt` reaches a
+conversation: it starts a new game from the title screen (with a save, so New Game is one
+below Continue) and plays into its first conversation, from about 300 s.
 
 ## Texture packs
 
@@ -149,6 +177,17 @@ pack's again from 80 s.
   `watch_windows.ps1`: logs the game window's size, position and DPI on every change.
 
 ## Content
+
+- `skeleton_test.cpp`: PC-to-console bone numbering, preserved palette order,
+  omitted finger joints, reduced distant rigs, invalid palettes and failure without
+  partial changes. No game files needed; the conversion's own check of models against
+  meshes (`CheckSkeletons` in `convert.cpp`) isn't covered. With two arguments (a PC
+  `.mmh`, the game's) it converts those instead. From the repo root:
+
+  ```
+  mkdir build\skeleton_test
+  scripts\env.cmd clang-cl /nologo /std:c++20 /EHsc /DDAO_LAUNCHER_ONLY /DNOMINMAX /DWIN32_LEAN_AND_MEAN /DFMT_HEADER_ONLY /IDAORecomp /Itools\XenonRecomp\XenonUtils /Itools\xenia-canary\third_party\fmt\include scripts\test\skeleton_test.cpp DAORecomp\mods\convert\skeleton.cpp DAORecomp\mods\convert\gff.cpp /Fobuild\skeleton_test\ /Febuild\skeleton_test\test.exe && build\skeleton_test\test.exe
+  ```
 
 - `convert_regress.py <work dir> <PC mod>=<earlier conversion>...`: converts copies of PC
   mods with the current build and lists the files that changed since an earlier

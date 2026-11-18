@@ -103,16 +103,22 @@ LLVM_TOOLS = ["clang-cl", "lld-link", "llvm-lib", "llvm-rc"] + ([] if IS_WINDOWS
 
 
 def llvm_full_version(bindir):
-    """The version ("22.1.8") of the LLVM in bindir if it has every tool the build needs."""
+    """The version ("22.1.8") of the LLVM in bindir if it has every tool the build needs
+    and its compiler and linker run here. (LLVM's Linux build links lld-link to
+    libxml2.so.2, which newer distributions no longer have: its clang-cl runs, its linker
+    doesn't.)"""
     if not all((Path(bindir) / (t + EXE)).exists() for t in LLVM_TOOLS):
         return None
     try:
-        out = subprocess.run([str(Path(bindir) / ("clang-cl" + EXE)), "--version"], capture_output=True,
-                             text=True, timeout=30, stdin=subprocess.DEVNULL,
-                             creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0).stdout
+        outputs = [subprocess.run([str(Path(bindir) / (tool + EXE)), "--version"], capture_output=True,
+                                  text=True, timeout=30, stdin=subprocess.DEVNULL,
+                                  creationflags=subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0)
+                   for tool in ("clang-cl", "lld-link")]
     except (OSError, subprocess.TimeoutExpired):
         return None
-    match = re.search(r"clang version (\d+(?:\.\d+)*)", out)
+    if any(out.returncode != 0 for out in outputs):
+        return None
+    match = re.search(r"clang version (\d+(?:\.\d+)*)", outputs[0].stdout)
     return match.group(1) if match else None
 
 
@@ -172,7 +178,10 @@ def ensure_llvm(reporter, choice="auto"):
     archive = download(reporter, dl, DOWNLOADS)
     extract(reporter, archive, dl.top_dir, LLVM_DIR)
     if llvm_full_version(pinned) != deps.LLVM_VERSION:
-        raise InstallError(f"The LLVM download in {LLVM_DIR} lacks one of {', '.join(LLVM_TOOLS)}.")
+        raise InstallError(f"The LLVM download in {LLVM_DIR} lacks one of {', '.join(LLVM_TOOLS)}, or they "
+                           f"can't run here (its linker needs libxml2.so.2): install LLVM "
+                           f"{deps.LLVM_MIN_MAJOR}+ (clang, lld) and run again"
+                           + (" (with --llvm auto)." if choice != "auto" else "."))
     archive.unlink()
     return pinned
 
@@ -194,6 +203,7 @@ def ensure_winsysroot(reporter, accept_license):
     wanted = _winsysroot_stamp()
     if winsysroot_ready():
         reporter.log(f"MSVC CRT and Windows SDK: ready ({wanted.strip()})")
+        _ensure_lib_case_links(reporter)  # (a sysroot set up before it existed)
         return WINSYSROOT
     if not accept_license:
         raise InstallError("Building needs the Microsoft Visual C++ runtime headers/libraries and the Windows "
@@ -217,7 +227,54 @@ def ensure_winsysroot(reporter, accept_license):
     run(reporter, args, env=clean_env())
     shutil.rmtree(cache, ignore_errors=True)
     stamp.write_text(wanted)
+    _ensure_lib_case_links(reporter)
     return WINSYSROOT
+
+
+# The libraries name others to link with (/DEFAULTLIB) in whatever case their authors
+# typed: MSVC 14.44's libcpmt.lib asks for "Advapi32.lib". xwin links a few spellings of
+# each library, not every one, and on Linux file names are case-sensitive, so lld-link
+# doesn't find it. Each name asked for gets a link to the library it means.
+_LIB_CASE_STAMP = "dao-lib-case.txt"
+_LIB_CASE_VERSION = "1\n"  # (changed with the scan below, so it runs again)
+_DEFAULTLIB = re.compile(rb'(?i)[-/]defaultlib:(?:"([^"\x00]+)"|([^\s"\x00]+))')
+
+
+def _ensure_lib_case_links(reporter):
+    stamp = WINSYSROOT / _LIB_CASE_STAMP
+    if IS_WINDOWS or (stamp.exists() and stamp.read_text() == _LIB_CASE_VERSION):
+        return
+    try:
+        made = _make_lib_case_links()
+    except OSError as e:
+        raise InstallError(f"Can't link the Windows libraries' other spellings in {WINSYSROOT}: {e}. "
+                           f"The build folder needs a Linux file system with symbolic links "
+                           f"(not exFAT or FAT).") from e
+    reporter.log(f"Windows libraries: linked {made} other spellings of their names")
+    stamp.write_text(_LIB_CASE_VERSION)
+
+
+def _make_lib_case_links():
+    lib_dirs = [Path(d) for d in glob.glob(str(WINSYSROOT / "VC" / "Tools" / "MSVC" / "*" / "lib" / "x64"))
+                + glob.glob(str(WINSYSROOT / "Windows Kits" / "10" / "Lib" / "*" / "*" / "x64"))]
+    present = {}  # lowercase name -> a real file of that name
+    for d in lib_dirs:
+        for f in d.iterdir():
+            if f.suffix.lower() == ".lib" and not f.is_symlink():
+                present.setdefault(f.name.lower(), f)
+    exact = {f.name for d in lib_dirs for f in d.iterdir()}
+    wanted = set()
+    for f in present.values():
+        for quoted, bare in _DEFAULTLIB.findall(f.read_bytes()):
+            name = (quoted or bare).decode("latin-1")
+            wanted.add(name if name.lower().endswith(".lib") else name + ".lib")
+    made = 0
+    for name in sorted(wanted - exact):
+        target = present.get(name.lower())
+        if target is not None and "/" not in name and "\\" not in name:
+            (target.parent / name).symlink_to(target.name)
+            made += 1
+    return made
 
 
 def ensure_toolchain(reporter, accept_license, llvm_choice="auto"):

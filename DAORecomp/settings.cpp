@@ -133,6 +133,11 @@ namespace dao
         return motionBlur >= kMaxMotionBlur ? "high" : motionBlur > 0 ? "low" : "off";
     }
 
+    std::string_view AntiAliasingName(AntiAliasing antiAliasing)
+    {
+        return antiAliasing == AntiAliasing::Smaa ? "smaa" : "msaa";
+    }
+
     std::string_view LowLatencyName(int lowLatency)
     {
         return lowLatency >= kMaxLowLatency ? "boost" : lowLatency > 0 ? "on" : "off";
@@ -222,6 +227,10 @@ namespace dao
             : temporal == "dlss"               ? TemporalUpscaler::Dlss
                                                : TemporalUpscaler::Auto;
         s.temporalSharpness = video["temporal_sharpness"].value_or(s.temporalSharpness);
+        // (Anything but "smaa" is the game's own.)
+        s.antiAliasing = video["anti_aliasing"].value_or(std::string()) == AntiAliasingName(AntiAliasing::Smaa)
+            ? AntiAliasing::Smaa
+            : AntiAliasing::Msaa;
         s.frameGeneration = video["frame_generation"].value_or(s.frameGeneration);
         s.vsync = video["vsync"].value_or(s.vsync);
         const std::string lowLatency = video["low_latency"].value_or(std::string());
@@ -243,6 +252,7 @@ namespace dao
                 s.motionBlur = level;
         }
         s.depthOfField = video["depth_of_field"].value_or(s.depthOfField);
+        s.consoleDepthOfField = video["console_depth_of_field"].value_or(s.consoleDepthOfField);
         s.fov = video["fov"].value_or(s.fov);
         s.conversationFov = video["conversation_fov"].value_or(s.conversationFov);
         s.texturePacks = video["texture_packs"].value_or(s.texturePacks);
@@ -326,6 +336,10 @@ sharpness = {}
 # Sharpening 0..1 (FSR only).
 temporal_upscaler = "{}"
 temporal_sharpness = {}
+# Anti-aliasing of the 3D scenes without temporal upscaling (temporal_upscaler = "off"):
+# "msaa" (the game's own 2xMSAA, the default) or "smaa" (SMAA 1x on the scenes rendered
+# single-sampled: about as smooth, and faster). Temporal upscaling anti-aliases them itself.
+anti_aliasing = "{}"
 # Frame generation (AMD FSR 3.1), with temporal upscaling: a frame generated between each
 # two of the 3D scenes doubles the frames shown, for half a frame more latency. Best with
 # frame_rate at half the display's refresh rate (60 fps on a 120 Hz display): when the
@@ -367,6 +381,10 @@ motion_blur = "{}"
 # nearest the camera sharp, the scene behind them (and anything in front of them) blurred,
 # as a film camera's lens does. Only with temporal upscaling (it blurs the upscaled scene).
 depth_of_field = {}
+# The game's own depth of field in conversations, on by default: the console's light blur
+# behind and in front of the people speaking (depth_of_field blurs over it). Off, the scene
+# stays sharp, for depth_of_field's blur alone (or none without temporal upscaling).
+console_depth_of_field = {}
 # The camera's field of view, in degrees across at 16:9 (80 to 120; 91 is the game's own):
 # in gameplay, and in conversations and cutscenes (scaling each shot's own).
 fov = {}
@@ -390,10 +408,11 @@ window_height = {}
             s.updateChannelChosen ? fmt::format("update_channel = \"{}\"", UpdateChannelName(s.updateChannel))
                                   : std::string("# update_channel = \"release\""),
             s.modsWarningSeen, LanguageName(s.language), s.resolutionScale, UpscalerName(s.upscaler), s.sharpness,
-            TemporalUpscalerName(s.temporalUpscaler), s.temporalSharpness, s.frameGeneration,
+            TemporalUpscalerName(s.temporalUpscaler), s.temporalSharpness, AntiAliasingName(s.antiAliasing),
+            s.frameGeneration,
             s.vsync, LowLatencyName(s.lowLatency), s.frameRate,
             s.hdr, s.hdrPaperWhite, s.hdrPeak, HdrQualityName(s.hdrHighQuality), s.anisotropicFiltering, s.shadows, s.postProcessing,
-            MotionBlurName(s.motionBlur), s.depthOfField, s.fov, s.conversationFov, s.texturePacks,
+            MotionBlurName(s.motionBlur), s.depthOfField, s.consoleDepthOfField, s.fov, s.conversationFov, s.texturePacks,
             s.texturePackMaxSize, s.texturePackMemory, s.fullscreen,
             s.windowWidth, s.windowHeight);
         for (const auto& [id, enabled] : s.patches)
@@ -443,6 +462,7 @@ window_height = {}
         SetXeniaCvar("draw_resolution_scale_y", toml::value<int64_t>(s.resolutionScale));
         SetXeniaCvar("dao_temporal_upscaler", toml::value<std::string>(std::string(TemporalUpscalerName(s.temporalUpscaler))));
         SetXeniaCvar("dao_temporal_sharpness", toml::value<double>(s.temporalSharpness));
+        SetXeniaCvar("dao_smaa", toml::value<bool>(s.antiAliasing == AntiAliasing::Smaa));
         SetXeniaCvar("dao_frame_generation", toml::value<bool>(s.frameGeneration));
         // (Not Xenia's own vsync cvar: the guest's vblanks stay at the console's 60 Hz.)
         SetXeniaCvar("dao_present_vsync", toml::value<bool>(s.vsync));
@@ -453,6 +473,7 @@ window_height = {}
         SetXeniaCvar("dao_hdr_scrgb", toml::value<bool>(s.hdrHighQuality));
         SetXeniaCvar("dao_motion_blur", toml::value<int64_t>(s.motionBlur));
         SetXeniaCvar("dao_depth_of_field", toml::value<bool>(s.depthOfField));
+        SetXeniaCvar("dao_console_depth_of_field", toml::value<bool>(s.consoleDepthOfField));
         if (s.anisotropicFiltering)
             SetXeniaCvar("anisotropic_override", toml::value<int64_t>(XeniaAnisotropicLevel(s.anisotropicFiltering)));
         try
@@ -477,8 +498,12 @@ window_height = {}
             LOGI("Settings: language {}", LanguageName(s.language));
         if (s.frameGeneration)
             LOGI("Settings: frame generation");
+        if (s.antiAliasing == AntiAliasing::Smaa && s.temporalUpscaler == TemporalUpscaler::Off)
+            LOGI("Settings: SMAA");
         if (s.motionBlur)
             LOGI("Settings: motion blur {}", MotionBlurName(s.motionBlur));
+        if (!s.consoleDepthOfField)
+            LOGI("Settings: console depth of field off");
         if (s.lowLatency)
             LOGI("Settings: low latency {}", LowLatencyName(s.lowLatency));
         if (s.fov != kOriginalFov || s.conversationFov != kOriginalFov)

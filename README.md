@@ -12,7 +12,10 @@ x86-64 Windows program, with a Direct3D 12 renderer based on Xenia's. It adds:
   only real frames are shown on one that can't keep up)
 - depth of field in conversations (and, it seems, cutscenes), from the scene's depth,
   with temporal upscaling: the people nearest the camera sharp, the scene behind them
-  blurred, as a film camera's lens does
+  blurred, as a film camera's lens does; the game's own (the console's), lighter blur
+  can be turned off, leaving only this one
+- SMAA anti-aliasing, an option without temporal upscaling in place of the game's 2xMSAA
+  (the default): faster (the scene is drawn once, single-sampled), edges about as smooth
 - HDR output: on an HDR display the 3D scenes are rendered in HDR (the game's
   tonemapping redone without compressing its highlights), upscaled in HDR;
   HDR quality High keeps it 16-bit scRGB all the way to the display
@@ -144,7 +147,27 @@ Details:
   Only packages in the read-only format Xbox Live delivers them in (LIVE/PIRS) are read;
   the files you drop are left as they are.
 
-### Linux (or from the source on Windows)
+### Linux and Steam Deck
+
+Download **DAORecomp-x86_64.AppImage** from the releases, make it executable (in a file
+manager: *Properties → Allow executing*, or `chmod +x DAORecomp-x86_64.AppImage`) and run
+it. It opens the same Install page as on Windows (it runs the same `DAORecomp.exe`, with
+Proton): pick the ISO and press **Install** (to `~/Games/DAORecomp` unless you choose
+another folder). From then on it opens the launcher; **Configure → Add to Steam** adds
+the AppImage to Steam (a Steam Deck then shows the game in Game Mode).
+
+- It needs Python 3.10 or newer (SteamOS and most distributions have it).
+- Proton: the newest Proton 9 or later Steam has installed (or Proton Experimental);
+  without one it downloads UMU-Proton once. A different one: `DAO_PROTON=<its folder>`.
+  The first run also downloads Valve's Steam Linux Runtime (as Steam would), through
+  [umu-launcher](https://github.com/Open-Wine-Components/umu-launcher), which the AppImage
+  carries.
+- Its Wine prefix, the tools and the build are in `~/.local/share/DAORecomp/` (about
+  12 GB once installed; `appimage.log` there says what happened).
+- The build takes longer than on Windows (Wine starts each compiler process more slowly):
+  about 8 minutes on a desktop CPU, longer on a Steam Deck.
+
+### From the source (Linux or Windows)
 
 Install Python 3.10+ with Tkinter, git and a C++ standard library (Debian/Ubuntu:
 `sudo apt install build-essential python3-tk git`; Fedora:
@@ -189,8 +212,9 @@ Builds from source (`dev`, or a changed checkout of a release or dev release) do
 With the launcher hidden there is no check: open it now and then (hold Shift).
 
 To update by hand, run a newer release's `DAORecomp.exe` and choose the same install
-folder (or give it `--dest`). Under Wine or Proton the launcher only links to the
-release page: update the checkout (`git pull`, or check out the new tag) and run
+folder (or give it `--dest`). The AppImage updates like Windows (the launcher's
+**Update**). Under other Wine or Proton setups the launcher only links to the release
+page: update the checkout (`git pull`, or check out the new tag) and run
 `python3 install.py --dest <install folder>`.
 
 ### What it downloads
@@ -204,7 +228,11 @@ Everything is pinned to exact versions and checked (`installer/deps.py`):
   (of its release archive, only its headers, its DLLs and NVIDIA's DLSS 310.9 and
   Reflex DLLs with their licenses are kept; DLSS Frame Generation's aren't installed yet).
 - LLVM/Clang 22 (or your system's LLVM 18+ if it has `clang-cl`, `lld-link`, `llvm-lib`
-  and `llvm-rc`), CMake and Ninja, and on Windows without git, MinGit.
+  and `llvm-rc`; also when LLVM's own Linux build can't run, as its linker needs
+  `libxml2.so.2`), CMake and Ninja, and on Windows (and in the AppImage) MinGit.
+- The AppImage, on its first run: Valve's Steam Linux Runtime and, without a Proton from
+  Steam, UMU-Proton (both by umu-launcher: the runtime from Valve's servers, UMU-Proton from
+  its GitHub releases).
 - The Microsoft C/C++ runtime headers/libraries and the Windows SDK, fetched by
   [xwin](https://github.com/Jake-Shadle/xwin). These are under
   [Microsoft's license](https://go.microsoft.com/fwlink/?LinkId=2086102), which you
@@ -251,15 +279,17 @@ read with the game closed.)
   stuck while closing, the launcher offers to end it after 15 seconds. If Windows still
   can't let go of it after that, Steam won't start again until the PC is restarted. The old
   `shortcuts.vdf` is kept beside it as `shortcuts.vdf.daorecomp-backup`.
-- **Linux:** the program is a Windows executable; run it with Wine or Proton.
+- **Linux:** run the AppImage (it starts the game with Proton), or add it to Steam from
+  the launcher (*Configure → Add to Steam*, outside Steam: Steam is closed for it and
+  started again). Installed from the source, the program is a Windows executable:
   - Steam: *Add a Non-Steam Game* → `DAORecomp.exe`, then in its properties force a
     Proton version (Proton includes vkd3d-proton for Direct3D 12).
   - Wine: install vkd3d-proton into the prefix (`winetricks vkd3d`), then run `./run.sh`.
 
-  Linux support is untested so far. The program needs Wine's support for placeholder
-  memory views (`VirtualAlloc2`/`MapViewOfFile3`) and Direct3D 12 through vkd3d-proton.
-  FSR 4 needs AMD's Windows driver and is unlikely to work under Proton; choose FSR 3.1
-  in the launcher (XeSS-SR and DLSS are untested there).
+  Tested with Proton 11.0 on an AMD GPU (RADV). AMD Anti-Lag 2 isn't available under
+  Proton, and FSR 4 needs AMD's Windows driver: choose FSR 3.1 in the launcher (XeSS-SR
+  and DLSS are untested there). On a Steam Deck, start with the 30 fps frame rate
+  (*Configure*).
 
 Most graphics settings can also be changed in the game: *Options → Graphics*. Most
 apply at once; when you leave the menu, the game lists the ones that take effect
@@ -268,6 +298,14 @@ launcher) makes the game faster on low-power devices such as the Steam Deck. Mot
 blur is off by default; Low and High cost GPU time while the scene moves. Depth of field
 in conversations is on by default; it costs GPU time in conversations and cutscenes only
 (about 0.85 ms a frame at 4K on an RX 9070 XT, by the GPU timing's "depth of field" mark).
+The recomp's depth of field blurs over the game's own (the console's), a lighter blur
+behind and in front of the people speaking. Turning off *Console depth of field in
+conversations* (on by default) leaves the recomp's alone, or, without temporal upscaling,
+none; it saves about 0.2 ms a frame in conversations (RX 9070 XT, at 1440p).
+With temporal upscaling off, anti-aliasing SMAA is faster than the game's 2xMSAA: about
+20% less GPU time a frame at 720p and 15% at 4K on an RX 9070 XT (SMAA's own passes take
+0.06 ms and 0.3 ms of it). Working on the finished image, it may let thin details shimmer
+more in motion.
 F11 switches between fullscreen and a window until the game is closed; changing
 *Fullscreen* in the Graphics tab saves the choice, F11 alone doesn't.
 
@@ -318,6 +356,15 @@ launcher also warns of what it finds in a mod that may not work on this version.
 first time the Mods page opens it explains this (`mods_warning_seen` in the
 `[launcher]` section of `userdata/config.toml` records that it was read). In the game,
 *Options → Graphics → Manage mods* closes it and opens the launcher's Mods page.
+
+A skinned PC mesh (`.msh`) that replaces a game file needs its PC model (`.mmh`) in
+the same mod: if a body mod ships only its meshes, add the original PC model, or the
+conversion stops. The converter matches a model's bones by name to the game's Xbox 360
+model of the same name. A problem with a skinned model or mesh stops the conversion
+without changing the mod's files. A skinned model with a new name takes its numbers from
+the game's nude body of its race (the `hf_`, `hm_`, `ef_`, `em_`, `df_`, `dm_` or `qm_`
+at the start of its name) if it has every bone of that rig. Others, such as creatures,
+keep the PC's numbering and may look wrong; the converter says so. Checked in game with NBaio on human and dwarf bodies; not yet on Qunari or distant models.
 
 PC texture packs (`.dds` files, such as *AP Neural Enhanced Diffusion Textures* on Nexus
 Mods) go in `texture packs/`, next to `game/` (in any folders inside it; the launcher's
@@ -413,9 +460,10 @@ are tested, and the traps found so far. The build details are below.
   unpacks to run. The installer is `scripts/build_installer_engine.py`'s folder:
   python.org's embeddable Python (signed by the Python Software Foundation; the
   PyInstaller exe it replaced was deleted by antivirus as a false positive) and
-  `installer.pyz`, the files tracked by git with truststore. The *Windows installer*
-  workflow builds the folder and the exe, and publishes `DAORecomp.exe` also as
-  `DAORecomp-Installer.exe`, the name launchers up to v0.5.1 update with.
+  `installer.pyz`, the files tracked by git with truststore. The *Installers* workflow
+  builds the folder and the exe, and publishes `DAORecomp.exe` (also as
+  `DAORecomp-Installer.exe`, the name launchers up to v0.5.1 update with) and the Linux
+  `DAORecomp-x86_64.AppImage` (`scripts/build_appimage.py`) around it.
 - `config/DAO.toml` and `config/DAO_switch_tables.toml` tell XenonRecomp where the game's
   functions and jump tables are; `scripts/patch_recompiler.py` adds the PowerPC
   instructions XenonRecomp lacked.
@@ -508,9 +556,10 @@ license is copied next to its DLLs, and Intel's XeSS license and third-party not
 next to `libxess.dll` (`intel_xess_license.txt`, `intel_xess_third_party_programs.txt`).
 `thirdparty/antilag2` is
 AMD's Anti-Lag 2 SDK header, under its MIT license (installed as
-`amd_antilag2_license.txt`). NVIDIA's Streamline (MIT) and its Reflex and DLSS DLLs
-(under NVIDIA's license terms) are downloaded by the installer, and their licenses
-installed next to them (`nvidia_streamline_license.txt`, `nvidia_reflex_license.txt`,
-`nvidia_dlss_license.txt`).
+`amd_antilag2_license.txt`). `thirdparty/smaa` is SMAA's shader and lookup textures
+(Jorge Jimenez et al.), under its MIT license (installed as `smaa_license.txt`).
+NVIDIA's Streamline (MIT) and its Reflex and DLSS DLLs (under NVIDIA's license terms)
+are downloaded by the installer, and their licenses installed next to them
+(`nvidia_streamline_license.txt`, `nvidia_reflex_license.txt`, `nvidia_dlss_license.txt`).
 *Dragon Age* is a trademark of Electronic Arts; this project is not affiliated with EA,
 BioWare or Microsoft.

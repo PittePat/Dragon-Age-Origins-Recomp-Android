@@ -2800,6 +2800,14 @@ bool D3D12CommandProcessor::IssueDraw(xenos::PrimitiveType primitive_type,
       pixel_shader && (pixel_shader->memexport_eM_written() != 0);
   const bool memexport_used = memexport_used_vertex || memexport_used_pixel;
 
+  // DAO: the draw's scale class, before anything uses it (the game's bloom
+  // and depth of field passes draw at the console's resolution); or the draw
+  // skipped (the game's depth of field's passes while it's off).
+  if (!render_target_cache_->DaoOnDraw(
+          pixel_shader ? pixel_shader->ucode_data_hash() : 0)) {
+    return true;
+  }
+
   // A draw contributing to its VIZ ID without the kill bit counts
   // at hi-Z before the pixel shader can reject anything.
   if (!viz_survey && pixel_shader &&
@@ -4694,6 +4702,13 @@ XE_NOINLINE void D3D12CommandProcessor::UpdateSystemConstantValues_Impl(
     // cache misses here, we're accessing the texture bindings out of order
     uint32_t texture_integer_scale_bits =
         texture_cache_->GetActiveIntegerScaleBits(texture_index);
+    // DAO: no texel center snap (bit 26) for the fetch constant UpdateBindings
+    // makes bilinear (the game's depth of field's blur). The game leaves its
+    // mip filter to earlier draws, and with a point or base map one all its
+    // filters count as point, so the snap would undo the bilinear filtering.
+    if (texture_index == render_target_cache_->dao_linear_fetch_constant()) {
+      texture_integer_scale_bits &= ~(UINT32_C(1) << 26);
+    }
     update_dirty_uint32_cmp(
         system_constants_.texture_integer_scale_bits[texture_index],
         texture_integer_scale_bits);
@@ -5146,6 +5161,13 @@ bool D3D12CommandProcessor::UpdateBindings(const D3D12Shader* vertex_shader,
     std::memset(current_float_constant_map_pixel_, 0,
                 sizeof(current_float_constant_map_pixel_));
   }
+  // DAO: a pixel shader float constant zeroed for this draw (DaoOnDraw's; the
+  // next draw uploads the guest's again).
+  const uint32_t dao_zeroed_float_constant =
+      render_target_cache_->dao_zeroed_float_constant_pixel();
+  if (dao_zeroed_float_constant != UINT32_MAX) {
+    cbuffer_binding_float_pixel_.up_to_date = false;
+  }
 
   // Write the constant buffer data.
   if (!cbuffer_binding_system_.up_to_date) {
@@ -5218,11 +5240,17 @@ bool D3D12CommandProcessor::UpdateBindings(const D3D12Shader* vertex_shader,
                       &regs[XE_GPU_REG_SHADER_CONSTANT_256_X + (i << 8) +
                             (float_constant_index << 2)],
                       4 * sizeof(float));
+          if (((i << 6) | float_constant_index) == dao_zeroed_float_constant) {
+            const float zero = 0.0f;
+            std::memcpy(float_constants, &zero, sizeof(zero));
+          }
           float_constants += 4 * sizeof(float);
         }
       }
     }
-    cbuffer_binding_float_pixel_.up_to_date = true;
+    // (With a constant zeroed, left stale: the next draw uploads the guest's.)
+    cbuffer_binding_float_pixel_.up_to_date =
+        dao_zeroed_float_constant == UINT32_MAX;
     current_graphics_root_up_to_date_ &=
         ~(1u << root_parameter_float_constants_pixel);
   }
@@ -5334,6 +5362,19 @@ bool D3D12CommandProcessor::UpdateBindings(const D3D12Shader* vertex_shader,
         }
         D3D12TextureCache::SamplerParameters parameters =
             texture_cache_->GetSamplerParameters(samplers_pixel_derefed[i]);
+        // DAO: bilinear for the fetch constant DaoOnDraw picks (the game's
+        // depth of field's blend), where the shader takes the filter from
+        // the fetch constant (DaoOnDraw checks the format can be filtered);
+        // UpdateSystemConstantValues_Impl turns its texel center snap off.
+        if (samplers_pixel_derefed[i].fetch_constant ==
+                render_target_cache_->dao_linear_fetch_constant() &&
+            samplers_pixel_derefed[i].mag_filter ==
+                xenos::TextureFilter::kUseFetchConst &&
+            samplers_pixel_derefed[i].min_filter ==
+                xenos::TextureFilter::kUseFetchConst) {
+          parameters.mag_linear = 1;
+          parameters.min_linear = 1;
+        }
         if (current_samplers_pixel_[i] != parameters) {
           current_samplers_pixel_[i] = parameters;
           cbuffer_binding_descriptor_indices_pixel_.up_to_date = false;

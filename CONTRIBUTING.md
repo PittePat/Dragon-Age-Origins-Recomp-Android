@@ -36,8 +36,8 @@ has no game code or data, and must never get any.
 3. **Third-party binaries come from the installer, not git.** The installer downloads
    pinned versions (SHA-256 checked, `installer/deps.py`): LLVM, FidelityFX, XeSS,
    Streamline and NVIDIA's DLLs. Never commit or bundle them. The only third-party code
-   in git is source under `thirdparty/` (the Anti-Lag 2 header), with its license and
-   where it came from.
+   in git is source under `thirdparty/` (the Anti-Lag 2 header, SMAA's shader and lookup
+   textures), each with its license and where it came from.
 4. **Untested features are marked experimental**, in the launcher, the game's menus
    and the README (as DLSS and Reflex are, built without an NVIDIA GPU to test on).
 
@@ -47,7 +47,7 @@ has no game code or data, and must never get any.
   the disc's ID that the installer checks; it's also disc 1 of that edition's Ultimate
   Edition). For the DLC and Title Update 6 or 7, their packages.
 - A checkout, built once by the installer: see the README's
-  [Linux (or from the source on Windows)](README.md#linux-or-from-the-source-on-windows)
+  [From the source (Linux or Windows)](README.md#from-the-source-linux-or-windows)
   for what to install first and the command. It fetches the tools into `tools/` (CMake,
   Ninja, LLVM, and the Windows SDK and C++ runtime through xwin, so no Visual Studio is
   needed), translates the game from your ISO and builds it in `build/`. After a change,
@@ -72,7 +72,7 @@ has no game code or data, and must never get any.
 | `DAORecomp/mods/` | Mods, and the PC-to-360 mod converter (`convert/`). The `mods/` folder at the top is the player's, not code. |
 | `DAORecomp/patches/` | Optional code patches the launcher lists. |
 | `DAORecomp/settings.*` | `userdata/config.toml`: every setting, read and written in one place. |
-| `thirdparty/` | The Anti-Lag 2 header (in git); SDL (fetched by the installer). |
+| `thirdparty/` | The Anti-Lag 2 header and SMAA (in git); SDL (fetched by the installer). |
 | `installer/` | The installer (Python): checks the ISO, downloads the tools, translates the game and builds it. |
 | `config/` | XenonRecomp's description of the game's code: functions, jump tables (`*_switch_tables.toml`), exception records. |
 | `scripts/` | Analysis, translation and build tools; `scripts/test/` is the test kit. |
@@ -138,7 +138,8 @@ python -I scripts/as2c.py DAORecomp/ui/pause_menu.as DAORecomp/ui/pause_menu_as.
 
 `check_include_case.py` checks against the Windows SDK in `tools/winsysroot`, which the
 installer fetches. `scripts/test/release_list_test.cpp` tests the launcher's choice of
-update (its build command is in `scripts/test/README.md`).
+update, and `scripts/test/skeleton_test.cpp` the converter's bone matching (their build
+commands are in `scripts/test/README.md`; CI doesn't run these two).
 
 ### Title Update 7 (needs the game's dumps)
 
@@ -176,8 +177,8 @@ What to run depends on the change:
 - **Renderer, presentation or pacing:** measure before and after, at 60 fps with vsync on
   and with the frame rate unlimited (the override `video.frame_rate=0`; at 60 fps the
   GPU's clocks drop with the load, which hides costs). Go through the temporal upscalers
-  you can (Off, FSR 4, FSR 3.1, XeSS), HDR on and off, FSR Frame Generation, and photo
-  mode.
+  you can (Off, FSR 4, FSR 3.1, XeSS), with Off both anti-aliasing options (2xMSAA,
+  SMAA), HDR on and off, FSR Frame Generation, and photo mode.
 - **Hooks:** both builds, with and without a title update (`DAO_BUILD=disc` runs the
   disc's).
 - **Launcher:** `DAO_LAUNCHER_SCREENSHOTS` saves each view as an image; with it,
@@ -239,8 +240,9 @@ What to run depends on the change:
 - Before a release, big changes get three reviews: logic (including anything that can
   cost frames), readability (including whether the docs still match the code) and
   security (files, downloads, the network, memory patching).
-- A tag publishes a release: the *Windows installer* workflow builds `DAORecomp.exe` and
-  publishes it (also as `DAORecomp-Installer.exe`, for launchers before v0.5.2).
+- A tag publishes a release: the *Installers* workflow builds `DAORecomp.exe` and
+  publishes it (also as `DAORecomp-Installer.exe`, for launchers before v0.5.2), with the
+  Linux `DAORecomp-x86_64.AppImage` built around it.
 - `vX.Y.Z` is a release; `vX.Y.Z-dev.N` is a dev release, offered only to launchers on the
   Dev update channel. All 0.x releases are marked pre-release on GitHub; the tag decides
   the channel.

@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "launcher/launcher_internal.h"
+#include "launcher/appimage.h"
 
 #include "patches/patches.h"
 #include "version.h"
@@ -23,6 +24,9 @@ namespace dao::launcher
         constexpr const char* kTemporalUpscalers[] = { "Off", "Auto (FSR 4 where supported, else FSR 3.1)",
             "FidelityFX FSR 4", "FidelityFX FSR 3.1", "Intel XeSS-SR", "NVIDIA DLSS 4.5 (experimental)" };
         static_assert(std::size(kTemporalUpscalers) == size_t(kMaxTemporalUpscaler) + 1);
+        // In AntiAliasing's order.
+        constexpr const char* kAntiAliasingNames[] = { "2xMSAA (original)", "SMAA" };
+        static_assert(std::size(kAntiAliasingNames) == size_t(kMaxAntiAliasing) + 1);
         // The names of kAnisotropicLevels.
         constexpr const char* kAnisotropicNames[] = { "Game default", "2x", "4x", "8x", "16x" };
         static_assert(std::size(kAnisotropicNames) == std::size(kAnisotropicLevels));
@@ -104,6 +108,14 @@ namespace dao::launcher
                      "DLSS don't sharpen; the Upscaler row's sharpness (FSR 1 or CAS) still applies to them. "
                      "Off is fastest on a Steam Deck.");
             ImGui::Spacing();
+            ImGui::BeginDisabled(s.temporalUpscaler != TemporalUpscaler::Off);
+            int antiAliasing = int(s.antiAliasing);
+            if (ComboRow("Anti-aliasing", &antiAliasing, kAntiAliasingNames, int(std::size(kAntiAliasingNames))))
+                s.antiAliasing = AntiAliasing(antiAliasing);
+            ImGui::EndDisabled();
+            HelpText("With temporal upscaling off: the game's own 2xMSAA, or SMAA, about as smooth and faster "
+                     "(the scene is drawn once, single-sampled).");
+            ImGui::Spacing();
             ImGui::BeginDisabled(s.temporalUpscaler == TemporalUpscaler::Off);
             ImGui::Checkbox("FSR Frame Generation", &s.frameGeneration);
             ImGui::EndDisabled();
@@ -147,6 +159,9 @@ namespace dao::launcher
             HelpText("Keeps the people nearest the camera sharp and blurs the scene behind and in front of "
                      "them, as a film camera's lens does. Needs temporal upscaling; costs GPU time in "
                      "conversations and cutscenes only.");
+            ImGui::Checkbox("Console depth of field in conversations", &s.consoleDepthOfField);
+            HelpText("The game's own blur (the console's), lighter. With both on, the one above blurs over "
+                     "it; turn this off to leave only the one above.");
 
             Section("Camera");
             FovRow("Field of view", &s.fov);
@@ -256,7 +271,9 @@ namespace dao::launcher
                 st.steamStep = SteamStep::Start;
             ImGui::EndDisabled();
             HelpText(st.steamPath.empty()
-                    ? "Steam isn't installed. (Under Proton or Wine, add the game from Steam itself.)"
+                    ? (appimage::Active()
+                          ? "Steam isn't installed, or it started the game (then the game is in your library already)."
+                          : "Steam isn't installed. (Under Proton or Wine, add the game from Steam itself.)")
                     : "Adds the game to your Steam library, with artwork from its menus. Started from Steam (Big "
                       "Picture too), it goes straight into the game. Steam has to close for it: it asks first, and "
                       "starts Steam again after.");
@@ -322,6 +339,7 @@ namespace dao::launcher
             s.resolutionScale = defaults.resolutionScale;
             s.temporalUpscaler = defaults.temporalUpscaler;
             s.temporalSharpness = defaults.temporalSharpness;
+            s.antiAliasing = defaults.antiAliasing;
             s.frameGeneration = defaults.frameGeneration;
             s.upscaler = defaults.upscaler;
             s.sharpness = defaults.sharpness;
@@ -330,6 +348,7 @@ namespace dao::launcher
             s.postProcessing = defaults.postProcessing;
             s.motionBlur = defaults.motionBlur;
             s.depthOfField = defaults.depthOfField;
+            s.consoleDepthOfField = defaults.consoleDepthOfField;
             s.fov = defaults.fov;
             s.conversationFov = defaults.conversationFov;
         }
