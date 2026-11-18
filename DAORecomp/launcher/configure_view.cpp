@@ -40,7 +40,7 @@ namespace dao::launcher
         static_assert(std::size(kLowLatencyNames) == kMaxLowLatency + 1);
         // In Language's order; each in its own language too, as a player looks for it.
         constexpr const char* kLanguageNames[] = { "English", "Italiano (Italian)", "Espa\u00F1ol (Spanish)",
-            "\u0420\u0443\u0441\u0441\u043A\u0438\u0439 (Russian)" };
+            "\u0420\u0443\u0441\u0441\u043A\u0438\u0439 (Russian)", "Deutsch (German)" };
         static_assert(std::size(kLanguageNames) == size_t(kMaxLanguage) + 1);
         // In UpdateChannel's order.
         constexpr const char* kUpdateChannelNames[] = { "Release", "Dev (test builds too)" };

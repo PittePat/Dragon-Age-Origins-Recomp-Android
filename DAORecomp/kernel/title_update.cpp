@@ -13,6 +13,9 @@ namespace dao::kernel
         // The Russian disc's ("Dragon Age: Начало", media 26111665): another signed copy of the
         // same program, its XenonRecomp output byte for byte the one above's.
         constexpr std::string_view kRussianXexSha1 = "33EC8BAA612D8186A3ABEB0C01C22D79EE1E3E02";
+        // The German disc's ("Dragon Age: Origins (Germany)", media 57EF80D8): the same, its
+        // XenonRecomp output byte for byte the Russian disc's.
+        constexpr std::string_view kGermanXexSha1 = "0DCD17FE740D2114302C0359F1CC81CC49BD2B46";
         // Title Update 6's and 7's default.xexp (installer/deps.py TU6_XEXP_SHA1,
         // TU7_XEXP_SHA1).
         constexpr std::string_view kTu6XexpSha1 = "4141B608E44C4ED35EB4E24BA2C05844A2F57A54";
@@ -21,10 +24,15 @@ namespace dao::kernel
         // default.xex, its XenonRecomp output with config/DAO_tu6.toml is byte for byte the one
         // of the other disc with Title Update 7.
         constexpr std::string_view kRussianTu7XexpSha1 = "B97EA0822418C14527298D1474428F13699D5943";
+        // Title Update 7 for the German disc (media 57EF80D8): the same again, its output with
+        // config/DAO_tu6.toml byte for byte the Russian disc's with its Title Update 7.
+        constexpr std::string_view kGermanTu7XexpSha1 = "02EB46494C26195037BF39F49534D9ACF270A030";
 
         int NumberOf(std::string_view sha1)
         {
-            return sha1 == kTu6XexpSha1 ? 6 : sha1 == kTu7XexpSha1 || sha1 == kRussianTu7XexpSha1 ? 7 : 0;
+            if (sha1 == kTu6XexpSha1)
+                return 6;
+            return sha1 == kTu7XexpSha1 || sha1 == kRussianTu7XexpSha1 || sha1 == kGermanTu7XexpSha1 ? 7 : 0;
         }
     }
 
@@ -47,6 +55,6 @@ namespace dao::kernel
     bool IsGameXex(std::span<const uint8_t> xex)
     {
         const std::string sha1 = Sha1(xex);
-        return sha1 == kGameXexSha1 || sha1 == kRussianXexSha1;
+        return sha1 == kGameXexSha1 || sha1 == kRussianXexSha1 || sha1 == kGermanXexSha1;
     }
 }

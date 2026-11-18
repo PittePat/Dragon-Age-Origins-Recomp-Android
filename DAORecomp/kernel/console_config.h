@@ -6,9 +6,9 @@
 namespace dao::kernel
 {
     // The console's language numbers (the Xbox 360 SDK's XC_LANGUAGE_*, as Xenia's
-    // XLanguage has them: English 1, Spanish 5, Italian 6, Russian 12), in Language's order.
-    // The game picks its text (and, on the Russian disc, its voices) by them.
-    inline constexpr uint32_t kConsoleLanguages[] = { 1, 6, 5, 12 };
+    // XLanguage has them: English 1, German 3, Spanish 5, Italian 6, Russian 12), in Language's
+    // order. The game picks its text (and, on the Russian and German discs, its voices) by them.
+    inline constexpr uint32_t kConsoleLanguages[] = { 1, 6, 5, 12, 3 };
     static_assert(std::size(kConsoleLanguages) == size_t(kMaxLanguage) + 1);
 
     // Settings::language as the console's language number.

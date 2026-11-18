@@ -155,6 +155,7 @@ namespace dao
         case Language::Italian: return "italian";
         case Language::Spanish: return "spanish";
         case Language::Russian: return "russian";
+        case Language::German: return "german";
         default: return "english";
         }
     }
@@ -316,8 +317,8 @@ mods_warning_seen = {}
 
 [game]
 # The game's language: "english", "italian" or "spanish" (the text and menus; the voices are
-# English in each), the ones the disc has text for; "russian" on the Russian disc (its text and
-# voices). Takes effect at the next start.
+# English in each), the ones the disc has text for; "russian" on the Russian disc and "german" on
+# the German disc (their text and voices). Takes effect at the next start.
 language = "{}"
 
 [video]
