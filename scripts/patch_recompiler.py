@@ -499,6 +499,25 @@ BLRL_NEW = '''    case PPC_INST_BLRL:
 '''
 
 # ...which the runtime provides through this hook in the generated ppc_context.h.
+# lwsync and sync as real fences. XenonRecomp emits both as no-ops, which holds on x86 (TSO) but
+# not on ARM64: the game's threads order their stores with them (UE3's render command ring in
+# Mass Effect, ran a command before its vtable was written: R6025 "pure virtual function call"
+# on every run on Snapdragon 8 Gen 1 / 8+ Gen 1, Adreno 730). lwsync orders loads and stores
+# except store-load: an acquire-release fence (dmb ish on ARM64, nothing on x86). sync is a full
+# fence. eieio (I/O ordering) stays a no-op. Builtins, so ppc_context.h (a profile input) stays.
+OLD_LWSYNC = '''    case PPC_INST_LWSYNC:
+        // no op
+        break;'''
+NEW_LWSYNC = '''    case PPC_INST_LWSYNC:
+        println("\\t__atomic_thread_fence(__ATOMIC_ACQ_REL);");
+        break;'''
+OLD_SYNC = '''    case PPC_INST_SYNC:
+        // no op
+        break;'''
+NEW_SYNC = '''    case PPC_INST_SYNC:
+        println("\\t__atomic_thread_fence(__ATOMIC_SEQ_CST);");
+        break;'''
+
 CONTEXT_ANCHOR = '#define PPC_MEMORY_SIZE 0x100000000ull'
 CONTEXT_ADDITION = '''#define PPC_MEMORY_SIZE 0x100000000ull
 
@@ -643,13 +662,14 @@ def patch_context_text(s):
 
 def patch_recompiler_text(s):
     for needle in (ANCHOR, OLD_VCMPBFP, OLD_BDNZF, OLD_MFTB, OLD_FCTID, OLD_FCTIDZ, OLD_FCTIWZ, OLD_SWITCH,
-                   RLWIMI_OLD, RLDICL_OLD, UPK_OLD, PK_OLD, BLRL_OLD):
+                   RLWIMI_OLD, RLDICL_OLD, UPK_OLD, PK_OLD, BLRL_OLD, OLD_LWSYNC, OLD_SYNC):
         assert s.count(needle) == 1, needle[:60]
     s = s.replace(OLD_VCMPBFP, '').replace(OLD_BDNZF, NEW_BDNZF).replace(OLD_MFTB, NEW_MFTB)
     s = s.replace(OLD_FCTID, NEW_FCTID).replace(OLD_FCTIDZ, NEW_FCTIDZ).replace(OLD_FCTIWZ, NEW_FCTIWZ)
     s = s.replace(OLD_SWITCH, NEW_SWITCH)
     s = s.replace(RLWIMI_OLD, RLWIMI_NEW).replace(RLDICL_OLD, RLDICL_NEW).replace(BLRL_OLD, BLRL_NEW)
     s = s.replace(UPK_OLD, UPK_NEW).replace(PK_OLD, PK_NEW)
+    s = s.replace(OLD_LWSYNC, NEW_LWSYNC).replace(OLD_SYNC, NEW_SYNC)
     return s.replace(ANCHOR, NEW_CASES + ANCHOR)
 
 
