@@ -13,6 +13,7 @@
 #include "apu/xma_decoder.h"
 #include "gpu/xenia_host.h"
 #include "kernel/function.h"
+#include "kernel/game_build.h"
 #include "kernel/memory.h"
 #include "kernel/thread.h"
 #include "kernel/types.h"
@@ -1013,3 +1014,59 @@ DAO_IMPORT_AS(XMAIsOutputBufferValid, dao::imp::XMAIsOutputBufferValid)
 DAO_IMPORT_AS(XMASetOutputBufferReadOffset, dao::imp::XMASetOutputBufferReadOffset)
 DAO_IMPORT_AS(XMAGetOutputBufferReadOffset, dao::imp::XMAGetOutputBufferReadOffset)
 DAO_IMPORT_AS(XMAGetOutputBufferWriteOffset, dao::imp::XMAGetOutputBufferWriteOffset)
+
+// Guards for a voice the game has released while its audio thread still processes it. The
+// game's voice keeps its sample buffer at +268 and the bytes left in it at +288; a call that
+// sets the buffer alone (82B38E78 in Title Update 7) can leave +268 at 0 with +288 still set,
+// and the converter below then copies into or out of address 0 + offset (a guest access
+// violation at 00005C00, Xiaomi 12, Title Update 7). Likewise a voice's mixer state at +260
+// (the TECNO crash at 000048B0, +18608 of it, disc build). Both come from the game's own audio
+// thread after 10 to 50 minutes of play; the console's timing never lets the two meet. A voice
+// in that state is passed over (the function's own "nothing done" result): at worst one audio
+// frame of that voice is lost instead of the game.
+namespace
+{
+    std::atomic<uint32_t> s_releasedVoices{0};
+
+    uint32_t GuestWord(uint32_t address)
+    {
+        return *dao::kernel::g_memory.Translate<dao::kernel::u32>(address);
+    }
+
+    void NoteReleasedVoice(const char* what, uint32_t voice)
+    {
+        const uint32_t n = s_releasedVoices.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (n <= 4 || (n & (n - 1)) == 0)
+            LOGW("Audio: voice {:08X} already released, its {} passed over (#{})", voice, what, n);
+    }
+
+    // The format converter (disc 82A6F1A8, Title Update 7 82B391B0): returns 0.
+    void ConvertReleasedVoiceGuard(PPCContext& ctx, uint8_t* base, PPCFunc* original)
+    {
+        const uint32_t voice = ctx.r3.u32;
+        if (voice && GuestWord(voice + 268) == 0)
+        {
+            NoteReleasedVoice("conversion", voice);
+            ctx.r3.u64 = 0;
+            return;
+        }
+        original(ctx, base);
+    }
+
+    // The mixer step (disc 82A73C20, Title Update 7 82B3DC30): 37 is its own result when
+    // there is nothing to mix.
+    void MixReleasedVoiceGuard(PPCContext& ctx, uint8_t* base, PPCFunc* original)
+    {
+        const uint32_t voice = ctx.r3.u32;
+        if (voice && GuestWord(voice + 260) == 0)
+        {
+            NoteReleasedVoice("mix", voice);
+            ctx.r3.u64 = 37;
+            return;
+        }
+        original(ctx, base);
+    }
+}
+
+GAME_HOOK(sub_82A6F1A8, tu6_sub_82B391B0, ConvertReleasedVoiceGuard)
+GAME_HOOK(sub_82A73C20, tu6_sub_82B3DC30, MixReleasedVoiceGuard)
