@@ -1,5 +1,6 @@
 // xam: users/profile, input, notifications, content (saves), enumerators, UI, messages.
 #include "stdafx.h"
+#include <unordered_set>
 #include "function.h"
 #include "text.h"
 #include "module.h"
@@ -1352,6 +1353,15 @@ namespace dao::imp
     // {user index, achievement id}, all big-endian. The ids go to the front end's callback.
     static void AnswerGamerServices(uint32_t app, uint32_t message, uint32_t buffer)
     {
+        if (app == 0xFB)
+        {
+            // Each distinct XGI message once, to see what the game asks the gamer services.
+            static std::mutex seenMutex;
+            static std::unordered_set<uint32_t> seen;
+            std::lock_guard lock(seenMutex);
+            if (seen.insert(message).second)
+                LOGI("XGI message {:08X} (buffer {:08X})", message, buffer);
+        }
         if (app != 0xFB || message != 0x000B0008 || !buffer || !g_achievementCallback)
             return;
         const uint32_t count = *g_memory.Translate<be<uint32_t>>(buffer);
