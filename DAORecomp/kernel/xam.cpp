@@ -10,6 +10,7 @@
 #include "files.h"
 #include "kernel/console_config.h"
 #include "kernel/game_exit.h"
+#include "kernel/achievements.h"
 
 #include "gpu/video.h"
 #include "gpu/xenia_host.h"
@@ -1346,10 +1347,27 @@ namespace dao::imp
         return X_ERROR_SUCCESS;
     }
 
+    // XGI (app 0xFB) is the title's gamer services. Message 0x000B0008 is XUserWriteAchievements:
+    // the buffer holds the number of achievements and a pointer to that many XUSER_ACHIEVEMENT
+    // {user index, achievement id}, all big-endian. The ids go to the front end's callback.
+    static void AnswerGamerServices(uint32_t app, uint32_t message, uint32_t buffer)
+    {
+        if (app != 0xFB || message != 0x000B0008 || !buffer || !g_achievementCallback)
+            return;
+        const uint32_t count = *g_memory.Translate<be<uint32_t>>(buffer);
+        const uint32_t list = *g_memory.Translate<be<uint32_t>>(buffer + 4);
+        if (!list || count == 0 || count > 64)
+            return;
+        LOGI("XUserWriteAchievements: {} achievement(s)", count);
+        for (uint32_t i = 0; i < count; i++)
+            g_achievementCallback(*g_memory.Translate<be<uint32_t>>(list + i * 8 + 4));
+    }
+
     uint32_t XMsgStartIORequest(uint32_t app, uint32_t message, uint32_t overlapped, uint32_t buffer, uint32_t length)
     {
         LOGT("XMsgStartIORequest(app {:02X}, msg {:08X}, buf {:08X}+{:#x})", app, message, buffer, length);
         AnswerMusicPlayer(app, message, buffer);
+        AnswerGamerServices(app, message, buffer);
         return Finish(overlapped, X_ERROR_SUCCESS);
     }
 
