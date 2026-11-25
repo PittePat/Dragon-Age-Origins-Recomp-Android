@@ -732,6 +732,8 @@ namespace dao::imp
     uint32_t XamUserCreateAchievementEnumerator(uint32_t titleId, uint32_t user, uint64_t xuid, uint32_t flags,
         uint32_t offset, uint32_t count, u32* bufferSize, u32* handleOut)
     {
+        LOGI("XamUserCreateAchievementEnumerator(title {:08X}, user {}, flags {:08X}, offset {}, count {})",
+            titleId, user, flags, offset, count);
         if (!count || !bufferSize || !handleOut)
             return X_ERROR_INVALID_PARAMETER;
         auto e = std::make_shared<Enumerator>();
