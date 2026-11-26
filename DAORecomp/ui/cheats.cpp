@@ -12,6 +12,7 @@
 // thread, between frames.
 #include "stdafx.h"
 #include "ui/cheats.h"
+#include "kernel/achievements.h"
 #include "kernel/game_build.h"
 #include "kernel/game_modes.h"
 #include "kernel/memory.h"
@@ -101,6 +102,8 @@ namespace
     // Asked for (any thread): the time, or 0.
     std::atomic<int64_t> s_toggleAt{ 0 };
     std::atomic<bool> s_open{ false };
+    // What the open (or asked for) menu is: the achievements list, not the cheats.
+    std::atomic<bool> s_achievements{ false };
     std::atomic<uint16_t> s_heldOver{ 0 };
     // The last game mode outside the menus (-1 before the first).
     std::atomic<int32_t> s_worldMode{ -1 };
@@ -302,8 +305,17 @@ namespace
             s_requests.clear();
             s_open = true;
         }
-        LOGI("Cheats: menu open");
-        dao::ui::cheats::ShowOverlay();
+        if (s_achievements)
+        {
+            LOGI("Achievements: list open");
+            if (g_showAchievementsList)
+                g_showAchievementsList();
+        }
+        else
+        {
+            LOGI("Cheats: menu open");
+            dao::ui::cheats::ShowOverlay();
+        }
     }
 
     void Close(uint8_t* base, uint32_t game)
@@ -316,8 +328,17 @@ namespace
             s_open = false;
             s_requests.clear();
         }
-        LOGI("Cheats: menu closed");
-        dao::ui::cheats::CloseOverlay();
+        if (s_achievements)
+        {
+            LOGI("Achievements: list closed");
+            if (g_hideAchievementsList)
+                g_hideAchievementsList();
+        }
+        else
+        {
+            LOGI("Cheats: menu closed");
+            dao::ui::cheats::CloseOverlay();
+        }
     }
 }
 
@@ -325,6 +346,17 @@ namespace dao::ui
 {
     void ToggleCheats()
     {
+        if (!s_open)
+            s_achievements = false;
+        s_toggleAt = Now();
+    }
+
+    void ToggleAchievements()
+    {
+        if (!dao::kernel::g_showAchievementsList)
+            return;
+        if (!s_open)
+            s_achievements = true;
         s_toggleAt = Now();
     }
 

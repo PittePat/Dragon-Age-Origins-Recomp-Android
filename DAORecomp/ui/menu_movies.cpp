@@ -13,6 +13,7 @@
 #include "ui/menu_movies.h"
 #include "ui/graphics_tab_as.h"
 #include "ui/pause_menu_as.h"
+#include "ui/pause_menu_achievements_as.h"
 #include "kernel/vfs.h"
 
 namespace fs = std::filesystem;
@@ -50,8 +51,15 @@ namespace dao::ui
         // in graphics_menu.cpp).
         constexpr MoviePatch kOptionsMenu{ "optionsmenu.gfx", "Options menu", "Graphics tab", kGraphicsTabScript,
             "DAORecomp_SectionHeader", SpriteExport{ 387, "LabelGameplay_mc", "DAORecomp_SectionHeader" } };
+#ifdef __ANDROID__
+        // No photo mode on Android: an Achievements row where Photo Mode is (the same script,
+        // make_pause_menu_achievements.py: its label and message changed).
+        constexpr MoviePatch kPauseMenu{ "mainmenu.gfx", "START menu", "Achievements and Cheats rows",
+            kPauseMenuAchievementsScript, "DAORecomp.Achievements", std::nullopt };
+#else
         constexpr MoviePatch kPauseMenu{ "mainmenu.gfx", "START menu", "Photo Mode and Cheats rows", kPauseMenuScript,
             "DAORecomp.PhotoMode", std::nullopt };
+#endif
 
         std::string OverridePath(std::string_view movie)
         {

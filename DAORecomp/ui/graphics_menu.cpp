@@ -443,7 +443,7 @@ namespace dao::ui
         }
 
         // "Set <key> <value>", "RestoreDefaults", "OpenMods", "Cheats" (also the
-        // START menu's row) or "PhotoMode" (the START menu's row: pause_menu.as,
+        // START menu's row), "PhotoMode" or "Achievements" (the START menu's row: pause_menu.as,
         // with menu_movies.cpp's marker), after "DAORecomp.". (All our menu scripts' messages come through
         // the engine's SendMessage, hooked here.)
         void HandleMessage(std::string_view message)
@@ -451,6 +451,13 @@ namespace dao::ui
             if (message == "PhotoMode")
             {
                 TogglePhotoMode();
+                return;
+            }
+            if (message == "Achievements")
+            {
+                // The START menu's Achievements row (where a build without photo mode has
+                // Photo Mode): the front end's list over the paused game.
+                ToggleAchievements();
                 return;
             }
             if (message == kCheats)

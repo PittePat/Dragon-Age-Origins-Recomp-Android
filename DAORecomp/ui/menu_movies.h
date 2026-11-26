@@ -9,6 +9,7 @@ namespace dao::ui
     bool InstallOptionsMovie();
 
     // mainmenu.gfx (the START menu) with Photo Mode and Cheats rows below
-    // Achievements (pause_menu.as).
+    // Achievements (pause_menu.as); on Android, with an Achievements row in place of Photo Mode
+    // (pause_menu_achievements_as.h).
     bool InstallPauseMenuMovie();
 }

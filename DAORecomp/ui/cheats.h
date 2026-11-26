@@ -13,6 +13,12 @@ namespace dao::ui
     // there: in exploration or combat). Any thread.
     void ToggleCheats();
 
+    // The same, for the achievements list (kernel/achievements.h's g_showAchievementsList): the START
+    // menu's Achievements row asks for it. It takes the cheats menu's place while it's open, with
+    // the world paused behind it, and closes with ToggleCheats. Nothing if the front end has no list.
+    // Any thread.
+    void ToggleAchievements();
+
     // Whether the cheats menu is open (photo mode doesn't start meanwhile). Any thread.
     bool CheatsOpen();
 
