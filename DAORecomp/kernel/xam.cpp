@@ -1372,7 +1372,11 @@ namespace dao::imp
             return;
         LOGI("XUserWriteAchievements: {} achievement(s)", count);
         for (uint32_t i = 0; i < count; i++)
-            g_achievementCallback(*g_memory.Translate<be<uint32_t>>(list + i * 8 + 4));
+        {
+            const uint32_t id = *g_memory.Translate<be<uint32_t>>(list + i * 8 + 4);
+            LOGI("XUserWriteAchievements: achievement {}", id);
+            g_achievementCallback(id);
+        }
     }
 
     uint32_t XMsgStartIORequest(uint32_t app, uint32_t message, uint32_t overlapped, uint32_t buffer, uint32_t length)
